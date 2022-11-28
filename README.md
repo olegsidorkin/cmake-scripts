@@ -1,7 +1,7 @@
 # CMake Scripts <!-- omit in toc -->
 
-[![pipeline status](https://git.stabletec.com/other/cmake-scripts/badges/master/pipeline.svg)](https://git.stabletec.com/other/cmake-scripts/commits/master)
-[![license](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](https://git.stabletec.com/other/cmake-scripts/blob/master/LICENSE)
+[![pipeline status](https://git.stabletec.com/other/cmake-scripts/badges/main/pipeline.svg)](https://git.stabletec.com/other/cmake-scripts/commits/main)
+[![license](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](https://git.stabletec.com/other/cmake-scripts/blob/main/LICENSE)
 
 This is a collection of quite useful scripts that expand the possibilities for building software with CMake, by making some things easier and otherwise adding new build types
 
@@ -15,12 +15,39 @@ This is a collection of quite useful scripts that expand the possibilities for b
       - [1b - Via target commands](#1b---via-target-commands)
     - [Example 2: Target instrumented, but with regex pattern of files to be excluded from report](#example-2-target-instrumented-but-with-regex-pattern-of-files-to-be-excluded-from-report)
     - [Example 3: Target added to the 'ccov' and 'ccov-all' targets](#example-3-target-added-to-the-ccov-and-ccov-all-targets)
+- [AFL Fuzzing Instrumentation `afl-fuzzing.cmake`](#afl-fuzzing-instrumentation-afl-fuzzingcmake)
+  - [Usage](#usage-1)
 - [Compiler Options `compiler-options.cmake`](#compiler-options-compiler-optionscmake)
 - [Dependency Graph `dependency-graph.cmake`](#dependency-graph-dependency-graphcmake)
   - [Required Arguments](#required-arguments)
+    - [OUTPUT_TYPE *STR*](#output_type-str)
   - [Optional Arguments](#optional-arguments)
+    - [ADD_TO_DEP_GRAPH](#add_to_dep_graph)
+    - [TARGET_NAME *STR*](#target_name-str)
+    - [OUTPUT_DIR *STR*](#output_dir-str)
+- [GLSL Shader File Targeted Compilation`glsl-shaders.cmake`](#glsl-shader-file-targeted-compilationglsl-shaderscmake)
+  - [Example](#example)
+  - [Required Arguments](#required-arguments-1)
+    - [TARGET_NAME](#target_name)
+  - [Optional Arguments](#optional-arguments-1)
+    - [INTERFACE *FILES*](#interface-files)
+    - [PUBLIC *FILES*](#public-files)
+    - [PRIVATE *FILES*](#private-files)
+    - [COMPILE_OPTIONS *OPTIONS*](#compile_options-options)
 - [Doxygen `doxygen.cmake`](#doxygen-doxygencmake)
-  - [Optional Arguments:](#optional-arguments)
+  - [Optional Arguments](#optional-arguments-2)
+    - [ADD_TO_DOC](#add_to_doc)
+    - [INSTALLABLE](#installable)
+    - [PROCESS_DOXYFILE](#process_doxyfile)
+    - [TARGET_NAME *STR*](#target_name-str-1)
+    - [OUTPUT_DIR *STR*](#output_dir-str-1)
+    - [INSTALL_PATH *STR*](#install_path-str)
+    - [DOXYFILE_PATH *STR*](#doxyfile_path-str)
+- [Prepare the Catch Test Framework `prepare-catch.cmake`](#prepare-the-catch-test-framework-prepare-catchcmake)
+  - [Optional Arguments](#optional-arguments-3)
+    - [COMPILED_CATCH](#compiled_catch)
+    - [CATCH1](#catch1)
+    - [CLONE](#clone)
 - [Tools `tools.cmake`](#tools-toolscmake)
   - [clang-tidy](#clang-tidy)
   - [include-what-you-use](#include-what-you-use)
@@ -28,10 +55,13 @@ This is a collection of quite useful scripts that expand the possibilities for b
 - [Formatting `formatting.cmake`](#formatting-formattingcmake)
   - [clang-format](#clang-format)
   - [cmake-format](#cmake-format)
+- [Link Time Optimization / Interprocedural Optimization `link-time-optimization.cmake`](#link-time-optimization--interprocedural-optimization-link-time-optimizationcmake)
+  - [Optional Arguments](#optional-arguments-4)
+    - [REQUIRED](#required)
 
 ## C++ Standards [`c++-standards.cmake`](c++-standards.cmake)
 
-Using the functions `cxx_11()`, `cxx_14()`, `cxx_17()` or `cxx_20()` this adds the appropriated flags for both unix and MSVC compilers, even for those before 3.11 with improper support.
+Using the functions `cxx_11()`, `cxx_14()`, `cxx_17()` or `cxx_20()` this adds the appropriate flags for both unix and MSVC compilers, even for those before 3.11 with improper support.
 
 These obviously force the standard to be required, and also disables compiler-specific extensions, ie `--std=gnu++11`. This helps to prevent fragmenting the code base with items not available elsewhere, adhering to the agreed C++ standards only.
 
@@ -56,18 +86,22 @@ A quick rundown of the tools available, and what they do:
     - Division by zero
     - Unreachable code
 - [MemorySanitizer](https://clang.llvm.org/docs/MemorySanitizer.html) detects uninitialized reads.
+- [Control Flow Integrity](https://clang.llvm.org/docs/ControlFlowIntegrity.html) is designed to detect certain forms of undefined behaviour that can potentially allow attackers to subvert the program's control flow.
 
-These are used by declaring the `USE_SANITIZER` CMake variable as one of:
+These are used by declaring the `USE_SANITIZER` CMake variable as string containing any of:
 - Address
 - Memory
 - MemoryWithOrigins
 - Undefined
 - Thread
-- Address;Undefined
-- Undefined;Address
 - Leak
+- CFI
+
+Multiple values are allowed, e.g. `-DUSE_SANITIZER=Address,Leak` but some sanitizers cannot be combined together, e.g.`-DUSE_SANITIZER=Address,Memory` will result in configuration error. The delimeter character is not required and `-DUSE_SANITIZER=AddressLeak` would work as well.
 
 ## Code Coverage [`code-coverage.cmake`](code-coverage.cmake)
+
+![Code Coverage Examples](img/code-cov.png)
 
 > In computer science, test coverage is a measure used to describe the degree to which the source code of a program is executed when a particular test suite runs. A program with high test coverage, measured as a percentage, has had more of its source code executed during testing, which suggests it has a lower chance of containing undetected software bugs compared to a program with low test coverage. Many different metrics can be used to calculate test coverage; some of the most basic are the percentage of program subroutines and the percentage of program statements called during execution of the test suite. 
 >
@@ -83,8 +117,9 @@ To enable, turn on the `CODE_COVERAGE` variable.
 
 - GCOV/LCOV:
     - ccov : Generates HTML code coverage report for every target added with 'AUTO' parameter.
-    - ccov-${TARNGET_NAME} : Generates HTML code coverage report for the associated named target.
+    - ccov-${TARGET_NAME} : Generates HTML code coverage report for the associated named target.
     - ccov-all : Generates HTML code coverage report, merging every target added with 'ALL' parameter into a single detailed report.
+    - ccov-all-capture : Generates an all-merged.info file, for use with coverage dashboards (e.g. codecov.io, coveralls).
 - LLVM-COV:
     - ccov : Generates HTML code coverage report for every target added with 'AUTO' parameter.
     - ccov-report : Generates HTML code coverage report for every target added with 'AUTO' parameter.
@@ -137,7 +172,7 @@ target_code_coverage(theExe) # As an executable target, adds the 'ccov-theExe' t
 
 ```
 add_executable(theExe main.cpp non_covered.cpp)
-target_code_coverage(theExe EXCLUDE non_covered.cpp) # As an executable target, the reports will exclude the non-covered.cpp file.
+target_code_coverage(theExe EXCLUDE non_covered.cpp) # As an executable target, the reports will exclude the non_covered.cpp file.
 ```
 
 #### Example 3: Target added to the 'ccov' and 'ccov-all' targets
@@ -148,6 +183,40 @@ add_code_coverage_all_targets(EXCLUDE test/*) # Adds the 'ccov-all' target set a
 add_executable(theExe main.cpp non_covered.cpp)
 target_code_coverage(theExe AUTO ALL EXCLUDE non_covered.cpp test/*) # As an executable target, adds to the 'ccov' and ccov-all' targets, and the reports will exclude the non-covered.cpp file, and any files in a test/ folder.
 ```
+
+## AFL Fuzzing Instrumentation [`afl-fuzzing.cmake`](afl-fuzzing.cmake)
+
+> American fuzzy lop is a security-oriented fuzzer that employs a novel type of compile-time instrumentation and genetic algorithms to automatically discover clean, interesting test cases that trigger new internal states in the targeted binary. This substantially improves the functional coverage for the fuzzed code. The compact synthesized corpora produced by the tool are also useful for seeding other, more labor- or resource-intensive testing regimes down the road.
+>
+> [american fuzzy lop](https://lcamtuf.coredump.cx/afl/)
+
+NOTE: This actually works based off the still-developed daughter project [AFL++](https://aflplus.plus/).
+
+### Usage
+
+To enable the use of AFL instrumentation, this file needs to be included into the CMake scripts at any point *before* any of the compilers are setup by CMake, typically at/before the first call to project(), or any part before compiler detection/validation occurs. This is since CMake does not support changing the compiler after it has been set:
+
+```
+cmake_minimum_required(VERSION 3.4)
+include(cmake/afl-fuzzing.cmake)
+project(Example C CXX)
+```
+
+Using `-DAFL=ON` will search for and switch to the AFL++ compiler wrappers that will instrument builds, or error if it cannot.
+
+Using `-DAFL_MODE=<MODE>` will attempt to use the specified  instrumentation type, see [here](https://github.com/AFLplusplus/AFLplusplus/blob/stable/docs/fuzzing_in_depth.md). Options are:
+- LTO
+- LLVM
+- GCC-PLUGIN
+- CLANG
+- GCC
+
+Using `-DAFL_ENV_OPTIONS=<...;...>` allows adding any number of AFL++'s instrumentation enabled via environment variables, and these will be prefixed to the build calls (see `afl-cc -hh`).
+
+As an example, a CMake configuration such as this:
+```cmake .. -DAFL_MODE=LTO -DAFL_ENV_OPTIONS=AFL_LLVM_THREADSAFE_INST=1;AFL_LLVM_LAF_ALL=1```
+would result in build commands such as this:
+```AFL_LLVM_THREADSAFE_INST=1 AFL_LLVM_LAF_ALL=1 afl-clang-lto --afl-lto <...>```
 
 ## Compiler Options [`compiler-options.cmake`](compiler-options.cmake)
 
@@ -163,22 +232,63 @@ Using `-DENABLE_ALL_WARNINGS=ON` will enable almost all of the warnings availabl
 
 Using `-DENABLE_EFFECTIVE_CXX=ON` adds the `-Weffc++` for both GCC and clang.
 
+Using `-DGENERATE_DEPENDENCY_DATA=ON` generates `.d` files along with regular object files on a per-source file basis on GCC/Clang compilers. These files contains the list of all header files used during compilation of that compilation unit.
+
 ## Dependency Graph [`dependency-graph.cmake`](dependency-graph.cmake)
 
 CMake, with the dot application available, will build a visual representation of the library/executable dependencies, like so:
-![Dependency Graph](dp-graph.png)
+![Dependency Graph](img/dp-graph.png)
 
 ### Required Arguments
 
-OUTPUT_TYPE *STR* - The type of output of `dot` to produce. Can be whatever `dot` itself supports (eg. png, ps, pdf).
+#### OUTPUT_TYPE *STR*
+The type of output of `dot` to produce. Can be whatever `dot` itself supports (eg. png, ps, pdf).
 
 ### Optional Arguments
 
-ADD_TO_DEP_GRAPH - If specified, add this generated target to be a dependency of the more general `dep-graph` target.
+#### ADD_TO_DEP_GRAPH
+If specified, add this generated target to be a dependency of the more general `dep-graph` target.
 
-TARGET_NAME *STR* - The name to give the doc target. (Default: doc-${PROJECT_NAME})
+#### TARGET_NAME *STR*
+The name to give the doc target. (Default: doc-${PROJECT_NAME})
 
-OUTPUT_DIR *STR* - The directory to place the generated output
+#### OUTPUT_DIR *STR*
+The directory to place the generated output
+
+## GLSL Shader File Targeted Compilation[`glsl-shaders.cmake`](glsl-shaders.cmake)
+
+This function acts much like the 'target_sources' function, as in raw GLSL shader files can be passed in and will be compiled using 'glslangValidator', provided it is available, where the compiled files will be located where the sources files are but with the '.spv' suffix appended.
+
+The first argument is the target that the files are associated with, and will be compiled as if it were a source file for it. All provided shaders are also only recompiled if the source shader file has been modified since the last compilation.
+
+### Example
+When calling `make vk_lib` the shaders will also be compiled with the library's `.c` files.
+
+```
+add_library(vk_lib lib.c, shader_manager.c)
+target_glsl_shaders(vk_lib
+    PRIVATE test.vert test.frag
+    COMPILE_OPTIONS --target-env vulkan1.1)
+```
+
+### Required Arguments
+
+#### TARGET_NAME
+Name of the target the shader files are associated with and to be compiled for.
+
+### Optional Arguments
+
+#### INTERFACE *FILES*
+ When the following shader files are added to a target, they are done so as 'INTERFACE' type files
+
+#### PUBLIC *FILES*
+When the following shader files are added to a target, they are done so as 'PUBLIC' type files
+
+#### PRIVATE *FILES*
+When the following shader files are added to a target, they are done so as 'PRIVATE' type files
+
+#### COMPILE_OPTIONS *OPTIONS*
+These are other options passed straight to the 'glslangValidator' call with the source shader file
 
 ## Doxygen [`doxygen.cmake`](doxygen.cmake)
 
@@ -186,20 +296,45 @@ Builds doxygen documentation with a default 'Doxyfile.in' or with a specified on
 
 This can only be used once per project, as each target generated is as `doc-${PROJECT_NAME}` unless TARGET_NAME is specified.
 
-### Optional Arguments:
-ADD_TO_DOC - If specified, adds this generated target to be a dependency of the more general `doc` target.
+### Optional Arguments
 
-INSTALLABLE - Adds the generated documentation to the generic `install` target, under the `documentation` installation group.
+#### ADD_TO_DOC
+If specified, adds this generated target to be a dependency of the more general `doc` target.
 
-PROCESS_DOXYFILE - If set, then will process the found Doxyfile through the CMAKE `configure_file` function for macro replacements before using it. (@ONLY)
+#### INSTALLABLE
+Adds the generated documentation to the generic `install` target, under the `documentation` installation group.
 
-TARGET_NAME *STR* - The name to give the doc target. (Default: doc-${PROJECT_NAME})
+#### PROCESS_DOXYFILE
+If set, then will process the found Doxyfile through the CMAKE `configure_file` function for macro replacements before using it. (@ONLY)
 
-OUTPUT_DIR *STR* - The directory to place the generated output. (Default: ${CMAKE_CURRENT_BINARY_DIR}/doc)
+#### TARGET_NAME *STR*
+The name to give the doc target. (Default: doc-${PROJECT_NAME})
 
-INSTALL_PATH *STR* - The path to install the documenttation under. (if not specified, defaults to 'share/${PROJECT_NAME})
+#### OUTPUT_DIR *STR*
+The directory to place the generated output. (Default: ${CMAKE_CURRENT_BINARY_DIR}/doc)
 
-DOXYFILE_PATH *STR* - The given doxygen file to use/process. (Defaults to'${CMAKE_CURRENT_SOURCE_DIR}/Doxyfile')
+#### INSTALL_PATH *STR*
+The path to install the documenttation under. (if not specified, defaults to 'share/${PROJECT_NAME})
+
+#### DOXYFILE_PATH *STR*
+The given doxygen file to use/process. (Defaults to'${CMAKE_CURRENT_SOURCE_DIR}/Doxyfile')
+
+## Prepare the Catch Test Framework [`prepare-catch.cmake`](prepare-catch.cmake)
+
+The included `prepare_catch` function contained within attempts to add the infrastructure necessary for automatically adding C/C++ tests using the Catch2 library, including either an interface or pre-compiled 'catch' target library.
+
+It first attempts to find the header on the local machine, and failing that, clones the single header variant for use. It does make the determination between pre-C++11 and will use Catch1.X rather than Catch2 (when cloned), automatically or forced.. Adds a subdirectory of tests/ if it exists from the macro's calling location.
+
+### Optional Arguments
+
+#### COMPILED_CATCH
+If this option is specified, then generates the 'catch' target as a library with catch already pre-compiled as part of the library. Otherwise acts just an interface library for the header location.
+
+#### CATCH1
+Force the use of Catch1.X, rather than auto-detecting the C++ version in use.
+
+#### CLONE
+Force cloning of Catch, rather than attempting to use a locally-found variant.
 
 ## Tools [`tools.cmake`](tools.cmake)
 
@@ -255,3 +390,14 @@ file(GLOB_RECURSE CMAKE_FILES
 
 cmake_format(TARGET_NAME ${CMAKE_FILES})
 ```
+
+## Link Time Optimization / Interprocedural Optimization [`link-time-optimization.cmake`](link-time-optimization.cmake)
+
+There are two callable objects here, `link_time_optimization` which applies LTO/IPO for all following targets, and `target_link_time_optimization` which applies it to a specified target.
+
+Doesn't work with GCC.
+
+### Optional Arguments
+
+#### REQUIRED
+If this is passed in, CMake configuration will fail with an error if LTO/IPO is not supported
